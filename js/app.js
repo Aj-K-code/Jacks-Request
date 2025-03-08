@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
         FILTERS: 'animeVault_filters'
     };
     const DELAY_BETWEEN_REQUESTS = 4000; // 4 seconds between requests to respect rate limits
+    const MAX_RETRIES = 3; // Maximum number of retries for API requests
 
     // DOM Elements
     const animeImage = document.getElementById('anime-image');
@@ -57,6 +58,37 @@ document.addEventListener('DOMContentLoaded', () => {
         yearMin: null,
         yearMax: null,
         scoreMin: 0
+    };
+
+    // Helper function to make API requests with retries
+    const fetchWithRetry = async (url, options = {}, retries = MAX_RETRIES) => {
+        try {
+            console.log(`Fetching: ${url} (Retries left: ${retries})`);
+            const response = await fetch(url, options);
+            
+            if (response.status === 429) {
+                // Rate limited - wait longer and retry
+                console.warn('Rate limited by API, waiting longer before retry...');
+                const retryAfter = response.headers.get('Retry-After') || 5;
+                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                return fetchWithRetry(url, options, retries - 1);
+            }
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status} - ${response.statusText}`);
+            }
+            
+            return response;
+        } catch (error) {
+            if (retries > 0) {
+                // Exponential backoff
+                const waitTime = DELAY_BETWEEN_REQUESTS * (MAX_RETRIES - retries + 1);
+                console.warn(`Request failed, retrying in ${waitTime/1000} seconds...`, error);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                return fetchWithRetry(url, options, retries - 1);
+            }
+            throw error;
+        }
     };
 
     // Initialize the app
@@ -121,23 +153,17 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             console.log('Fetching genres from API...');
             
-            // Add delay to respect API rate limits
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
-            
-            const response = await fetch(`${JIKAN_API_BASE}/genres/anime`, {
+            const options = {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
                 },
                 mode: 'cors'
-            });
+            };
             
-            if (!response.ok) {
-                console.error(`API error: ${response.status} - ${response.statusText}`);
-                throw new Error(`API error: ${response.status} - ${response.statusText}`);
-            }
-            
+            const response = await fetchWithRetry(`${JIKAN_API_BASE}/genres/anime`, options);
             const data = await response.json();
+            
             console.log('Genres fetched successfully:', data);
             genres = data.data;
             
@@ -176,9 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             console.log('Loading anime queue with filters:', filters);
             
-            // Add delay to respect API rate limits
-            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
-            
             // Build query parameters
             const queryParams = new URLSearchParams();
             
@@ -204,26 +227,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add sorting and pagination
             queryParams.append('order_by', 'score');
             queryParams.append('sort', 'desc');
-            queryParams.append('limit', 25);
+            queryParams.append('limit', 20);
             queryParams.append('page', Math.floor(Math.random() * 3) + 1); // Random page for variety
             
-            console.log(`API request: ${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
+            const url = `${JIKAN_API_BASE}/anime?${queryParams.toString()}`;
+            console.log(`API request: ${url}`);
             
             // Fetch anime list
-            const response = await fetch(`${JIKAN_API_BASE}/anime?${queryParams.toString()}`, {
+            const options = {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
                 },
                 mode: 'cors'
-            });
+            };
             
-            if (!response.ok) {
-                console.error(`API error: ${response.status} - ${response.statusText}`);
-                throw new Error(`API error: ${response.status} - ${response.statusText}`);
-            }
-            
+            const response = await fetchWithRetry(url, options);
             const data = await response.json();
+            
             console.log('Anime data fetched successfully:', data);
             
             if (!data.data || data.data.length === 0) {
@@ -241,29 +262,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (animeQueue.length === 0) {
                 console.log('No new anime found with current filters. Trying with broader criteria...');
                 
-                // Add delay to respect API rate limits
-                await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
-                
                 // Reset filters temporarily to get more results
                 const tempQueryParams = new URLSearchParams();
                 tempQueryParams.append('order_by', 'score');
                 tempQueryParams.append('sort', 'desc');
-                tempQueryParams.append('limit', 25);
-                tempQueryParams.append('page', Math.floor(Math.random() * 5) + 1);
+                tempQueryParams.append('limit', 20);
+                tempQueryParams.append('page', Math.floor(Math.random() * 3) + 1);
                 
-                const tempResponse = await fetch(`${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
-                    mode: 'cors'
-                });
+                const tempUrl = `${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`;
+                console.log(`Broader API request: ${tempUrl}`);
                 
-                if (!tempResponse.ok) {
-                    console.error(`API error: ${tempResponse.status} - ${tempResponse.statusText}`);
-                    throw new Error(`API error: ${tempResponse.status} - ${tempResponse.statusText}`);
-                }
-                
+                const tempResponse = await fetchWithRetry(tempUrl, options);
                 const tempData = await tempResponse.json();
                 
                 if (!tempData.data || tempData.data.length === 0) {
