@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
         SEEN_ANIME: 'animeVault_seenAnime',
         FILTERS: 'animeVault_filters'
     };
+    const DELAY_BETWEEN_REQUESTS = 4000; // 4 seconds between requests to respect rate limits
 
     // DOM Elements
     const animeImage = document.getElementById('anime-image');
@@ -61,15 +62,57 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the app
     const init = async () => {
         try {
-            await loadGenres();
-            populateGenreSelect();
-            applyStoredFilters();
-            await loadAnimeQueue();
-            displayNextAnime();
+            // Show loading state
+            animeTitle.textContent = 'Loading...';
+            animeSynopsis.textContent = 'Loading anime data...';
+            animeImage.src = 'https://via.placeholder.com/400x225?text=Loading...';
+            
+            console.log('Initializing application...');
+            
+            // Load saved and seen anime from localStorage
+            savedAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVED_ANIME)) || [];
+            seenAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEEN_ANIME)) || [];
+            
+            console.log(`Loaded ${savedAnime.length} saved anime and ${seenAnime.length} seen anime from localStorage`);
+            
+            // Update lists in UI
+            updateSavedList();
+            updateSeenList();
+            
+            // Initialize with a delay to respect API rate limits
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            try {
+                await loadGenres();
+                populateGenreSelect();
+                applyStoredFilters();
+                
+                try {
+                    await loadAnimeQueue();
+                    displayNextAnime();
+                } catch (queueError) {
+                    console.error('Failed to load anime queue:', queueError);
+                    animeTitle.textContent = 'Error Loading Anime';
+                    animeSynopsis.textContent = `Error: ${queueError.message}. Please try refreshing the page or adjusting your filters.`;
+                }
+            } catch (genreError) {
+                console.error('Failed to load genres:', genreError);
+                // Still try to load anime even if genres fail
+                try {
+                    await loadAnimeQueue();
+                    displayNextAnime();
+                } catch (queueError) {
+                    console.error('Failed to load anime queue:', queueError);
+                    animeTitle.textContent = 'Error Loading Anime';
+                    animeSynopsis.textContent = `Error: ${queueError.message}. Please try refreshing the page or adjusting your filters.`;
+                }
+            }
+            
             setupEventListeners();
         } catch (error) {
             console.error('Initialization error:', error);
-            animeSynopsis.textContent = 'Error loading data. Please try refreshing the page.';
+            animeTitle.textContent = 'Error';
+            animeSynopsis.textContent = `Error loading data: ${error.message}. Please try refreshing the page.`;
         }
     };
 
@@ -77,18 +120,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadGenres = async () => {
         try {
             console.log('Fetching genres from API...');
-            const response = await fetch(`${JIKAN_API_BASE}/genres/anime`);
+            
+            // Add delay to respect API rate limits
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+            
+            const response = await fetch(`${JIKAN_API_BASE}/genres/anime`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                mode: 'cors'
+            });
             
             if (!response.ok) {
+                console.error(`API error: ${response.status} - ${response.statusText}`);
                 throw new Error(`API error: ${response.status} - ${response.statusText}`);
             }
             
             const data = await response.json();
             console.log('Genres fetched successfully:', data);
             genres = data.data;
+            
+            if (!genres || genres.length === 0) {
+                console.warn('No genres found in API response');
+                throw new Error('No genres found in API response');
+            }
         } catch (error) {
             console.error('Error loading genres:', error);
-            throw new Error('Failed to load genres. Please check your connection and try again.');
+            throw error;
         }
     };
 
@@ -117,20 +176,24 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             console.log('Loading anime queue with filters:', filters);
             
+            // Add delay to respect API rate limits
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+            
             // Build query parameters
             const queryParams = new URLSearchParams();
             
             // Add genres if selected
             if (filters.genres.length > 0) {
+                // Jikan API v4 uses 'genres' parameter
                 queryParams.append('genres', filters.genres.join(','));
             }
             
             // Add year range if specified
             if (filters.yearMin) {
-                queryParams.append('start_date', `${filters.yearMin}-01-01`);
+                queryParams.append('start_date', `${filters.yearMin}`);
             }
             if (filters.yearMax) {
-                queryParams.append('end_date', `${filters.yearMax}-12-31`);
+                queryParams.append('end_date', `${filters.yearMax}`);
             }
             
             // Add minimum score
@@ -139,22 +202,34 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Add sorting and pagination
-            queryParams.append('sort', 'score');
-            queryParams.append('order_by', 'desc');
+            queryParams.append('order_by', 'score');
+            queryParams.append('sort', 'desc');
             queryParams.append('limit', 25);
-            queryParams.append('page', Math.floor(Math.random() * 5) + 1); // Random page for variety
+            queryParams.append('page', Math.floor(Math.random() * 3) + 1); // Random page for variety
             
             console.log(`API request: ${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
             
             // Fetch anime list
-            const response = await fetch(`${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
+            const response = await fetch(`${JIKAN_API_BASE}/anime?${queryParams.toString()}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                mode: 'cors'
+            });
             
             if (!response.ok) {
+                console.error(`API error: ${response.status} - ${response.statusText}`);
                 throw new Error(`API error: ${response.status} - ${response.statusText}`);
             }
             
             const data = await response.json();
             console.log('Anime data fetched successfully:', data);
+            
+            if (!data.data || data.data.length === 0) {
+                console.warn('No anime found in API response');
+                throw new Error('No anime found in API response');
+            }
             
             // Filter out already saved or seen anime
             animeQueue = data.data.filter(anime => 
@@ -165,20 +240,37 @@ document.addEventListener('DOMContentLoaded', () => {
             // If queue is empty, try with different filters
             if (animeQueue.length === 0) {
                 console.log('No new anime found with current filters. Trying with broader criteria...');
+                
+                // Add delay to respect API rate limits
+                await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_REQUESTS));
+                
                 // Reset filters temporarily to get more results
                 const tempQueryParams = new URLSearchParams();
-                tempQueryParams.append('sort', 'score');
-                tempQueryParams.append('order_by', 'desc');
+                tempQueryParams.append('order_by', 'score');
+                tempQueryParams.append('sort', 'desc');
                 tempQueryParams.append('limit', 25);
-                tempQueryParams.append('page', Math.floor(Math.random() * 10) + 1);
+                tempQueryParams.append('page', Math.floor(Math.random() * 5) + 1);
                 
-                const tempResponse = await fetch(`${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`);
+                const tempResponse = await fetch(`${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors'
+                });
                 
                 if (!tempResponse.ok) {
+                    console.error(`API error: ${tempResponse.status} - ${tempResponse.statusText}`);
                     throw new Error(`API error: ${tempResponse.status} - ${tempResponse.statusText}`);
                 }
                 
                 const tempData = await tempResponse.json();
+                
+                if (!tempData.data || tempData.data.length === 0) {
+                    console.warn('No anime found in API response with broader criteria');
+                    throw new Error('No anime found in API response with broader criteria');
+                }
+                
                 animeQueue = tempData.data.filter(anime => 
                     !savedAnime.some(saved => saved.mal_id === anime.mal_id) && 
                     !seenAnime.some(seen => seen.mal_id === anime.mal_id)
@@ -189,9 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
             animeQueue = shuffleArray(animeQueue);
             
             console.log(`Loaded ${animeQueue.length} anime into queue`);
+            
+            if (animeQueue.length === 0) {
+                throw new Error('No new anime found that you haven\'t already saved or seen');
+            }
         } catch (error) {
             console.error('Error loading anime queue:', error);
-            throw new Error('Failed to load anime. Please check your connection and try again.');
+            throw error;
         }
     };
 
