@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnimeSwipe - Find Your Next Anime</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AnimeSwipe</h1>
+            <p>Find your next favorite anime</p>
+        </header>
+
+        <main>
+            <div class="card-container">
+                <div class="card">
+                    <div class="card-image">
+                        <img id="anime-image" src="https://via.placeholder.com/400x225" alt="Anime Cover">
+                    </div>
+                    <div class="card-content">
+                        <h2 id="anime-title">Loading...</h2>
+                        <div id="anime-info">
+                            <span id="anime-year"></span>
+                            <span id="anime-episodes"></span>
+                            <span id="anime-score"></span>
+                        </div>
+                        <p id="anime-synopsis">Loading anime information...</p>
+                        <div class="genres" id="anime-genres">
+                        </div>
+                    </div>
+                </div>
+                <div class="swipe-buttons">
+                    <button id="swipe-left" class="swipe-button left">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <button id="swipe-up" class="swipe-button up">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button id="swipe-right" class="swipe-button right">
+                        <i class="fas fa-heart"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="side-panel">
+                <div class="filter-panel">
+                    <button id="filter-button" class="panel-button">
+                        <i class="fas fa-filter"></i> Filters
+                    </button>
+                    <div id="filter-content" class="panel-content hidden">
+                        <h3>Filters</h3>
+                        <div class="filter-group">
+                            <label for="genre-select">Genre:</label>
+                            <select id="genre-select" multiple>
+                                <!-- Will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="year-min">Year Range:</label>
+                            <div class="range-inputs">
+                                <input type="number" id="year-min" placeholder="From" min="1970" max="2025">
+                                <span>-</span>
+                                <input type="number" id="year-max" placeholder="To" min="1970" max="2025">
+                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label for="score-min">Minimum Score:</label>
+                            <input type="range" id="score-min" min="0" max="10" step="0.5" value="0">
+                            <span id="score-value">0</span>
+                        </div>
+                        <button id="apply-filters" class="action-button">Apply Filters</button>
+                        <button id="reset-filters" class="action-button secondary">Reset</button>
+                    </div>
+                </div>
+
+                <div class="saved-panel">
+                    <button id="saved-button" class="panel-button">
+                        <i class="fas fa-bookmark"></i> Saved Anime
+                    </button>
+                    <div id="saved-content" class="panel-content hidden">
+                        <h3>Your Saved Anime</h3>
+                        <ul id="saved-list">
+                            <!-- Will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="seen-panel">
+                    <button id="seen-button" class="panel-button">
+                        <i class="fas fa-eye"></i> Seen Anime
+                    </button>
+                    <div id="seen-content" class="panel-content hidden">
+                        <h3>Anime You've Seen</h3>
+                        <ul id="seen-list">
+                            <!-- Will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
