@@ -437,62 +437,117 @@ document.addEventListener('DOMContentLoaded', () => {
         let startY = 0;
         let endX = 0;
         let endY = 0;
+        let isMouseDown = false;
 
-        const touchArea = document.createElement('div');
-        touchArea.className = 'touch-area';
-        document.querySelector('.card-container').appendChild(touchArea);
+        // Create touch area if it doesn't exist
+        let touchArea = document.querySelector('.touch-area');
+        if (!touchArea) {
+            touchArea = document.createElement('div');
+            touchArea.className = 'touch-area';
+            const cardContainer = document.querySelector('.card-container');
+            if (cardContainer) {
+                cardContainer.appendChild(touchArea);
+            }
+        }
 
         // Touch events
         touchArea.addEventListener('touchstart', (event) => {
+            event.preventDefault(); // Prevent scrolling
             const touch = event.touches[0];
             startX = touch.clientX;
             startY = touch.clientY;
         });
 
         touchArea.addEventListener('touchend', (event) => {
+            event.preventDefault();
             const touch = event.changedTouches[0];
             endX = touch.clientX;
             endY = touch.clientY;
-
             handleSwipeGesture();
         });
 
         // Mouse events
         touchArea.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            isMouseDown = true;
             startX = event.clientX;
             startY = event.clientY;
         });
 
         touchArea.addEventListener('mouseup', (event) => {
-            endX = event.clientX;
-            endY = event.clientY;
-
-            handleSwipeGesture();
+            event.preventDefault();
+            if (isMouseDown) {
+                endX = event.clientX;
+                endY = event.clientY;
+                isMouseDown = false;
+                handleSwipeGesture();
+            }
         });
+
+        touchArea.addEventListener('mouseleave', (event) => {
+            if (isMouseDown) {
+                endX = event.clientX;
+                endY = event.clientY;
+                isMouseDown = false;
+                handleSwipeGesture();
+            }
+        });
+
+        // Make sure buttons still work
+        const ensureButtonsWork = () => {
+            const buttons = document.querySelectorAll('.swipe-button');
+            buttons.forEach(button => {
+                button.addEventListener('click', (event) => {
+                    event.stopPropagation(); // Prevent the touch area from capturing the event
+                });
+            });
+        };
+        
+        ensureButtonsWork();
     };
 
     // Handle swipe gestures
     const handleSwipeGesture = () => {
         const diffX = endX - startX;
         const diffY = endY - startY;
+        const minSwipeDistance = 50; // Minimum distance to count as a swipe
 
+        // Only process if there was significant movement
+        if (Math.abs(diffX) < minSwipeDistance && Math.abs(diffY) < minSwipeDistance) {
+            return; // Not a swipe, just a tap
+        }
+
+        const card = document.querySelector('.card');
+        
         if (Math.abs(diffX) > Math.abs(diffY)) {
             // Horizontal swipe
-            if (diffX > 50) {
+            if (diffX > minSwipeDistance) {
                 // Swipe right
-                saveAnime();
-                displayNextAnime();
-            } else if (diffX < -50) {
+                if (card) card.classList.add('swipe-right-animation');
+                setTimeout(() => {
+                    saveAnime();
+                    if (card) card.classList.remove('swipe-right-animation');
+                    displayNextAnime();
+                }, 500);
+            } else if (diffX < -minSwipeDistance) {
                 // Swipe left
-                displayNextAnime();
+                if (card) card.classList.add('swipe-left-animation');
+                setTimeout(() => {
+                    if (card) card.classList.remove('swipe-left-animation');
+                    displayNextAnime();
+                }, 500);
             }
         } else {
             // Vertical swipe
-            if (diffY < -50) {
+            if (diffY < -minSwipeDistance) {
                 // Swipe up
-                markAsSeen();
-                displayNextAnime();
-            } else if (diffY > 50) {
+                if (card) card.classList.add('swipe-up-animation');
+                setTimeout(() => {
+                    markAsSeen();
+                    if (card) card.classList.remove('swipe-up-animation');
+                    displayNextAnime();
+                }, 500);
+            } else if (diffY > minSwipeDistance) {
                 // Swipe down
                 displayNextAnime();
             }
@@ -503,17 +558,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const setupEventListeners = () => {
         // Swipe buttons
         swipeLeftButton.addEventListener('click', () => {
-            displayNextAnime();
+            const card = document.querySelector('.card');
+            if (card) card.classList.add('swipe-left-animation');
+            setTimeout(() => {
+                if (card) card.classList.remove('swipe-left-animation');
+                displayNextAnime();
+            }, 500);
         });
         
         swipeRightButton.addEventListener('click', () => {
-            saveAnime();
-            displayNextAnime();
+            const card = document.querySelector('.card');
+            if (card) card.classList.add('swipe-right-animation');
+            setTimeout(() => {
+                saveAnime();
+                if (card) card.classList.remove('swipe-right-animation');
+                displayNextAnime();
+            }, 500);
         });
 
         swipeUpButton.addEventListener('click', () => {
-            markAsSeen();
-            displayNextAnime();
+            const card = document.querySelector('.card');
+            if (card) card.classList.add('swipe-up-animation');
+            setTimeout(() => {
+                markAsSeen();
+                if (card) card.classList.remove('swipe-up-animation');
+                displayNextAnime();
+            }, 500);
         });
         
         // Panel toggle buttons
