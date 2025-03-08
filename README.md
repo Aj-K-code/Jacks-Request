@@ -1,54 +1,50 @@
-# AnimeSwipe
+# AnimeVault
 
-This is for Jack. AnimeSwipe is a Tinder-style anime recommendation web application that helps you discover new anime based on your preferences. The app learns from your swipes to provide increasingly personalized recommendations over time.
+A modern web application for discovering your next favorite anime.
 
 ## Features
 
-- **Swipe Interface**: Swipe right to save anime you're interested in, swipe left to skip
-- **Personalized Recommendations**: The app learns from your preferences to suggest anime you might like
-- **Filtering Options**: Filter anime by genre, year, and minimum score
-- **Saved Anime List**: View and manage your saved anime
+- **Discover New Anime**: Browse through a curated selection of anime based on your preferences
+- **Personalized Recommendations**: Filter by genre, year, and minimum score
+- **Save Your Favorites**: Keep track of anime you want to watch later
+- **Track What You've Seen**: Mark anime as "Seen It" to avoid repeated recommendations
 - **Detailed Information**: View comprehensive details about each anime
-- **Responsive Design**: Works on desktop and mobile devices
-- **Local Storage**: Your preferences and saved anime are stored locally
 
 ## How to Use
 
-1. **Browse Anime**: Swipe through anime cards to discover new shows
-2. **Save Favorites**: Swipe right (heart button) to save anime you like
-3. **Skip**: Swipe left (X button) to skip anime you're not interested in
-4. **Filter**: Click the "Filters" button to set genre, year, and score preferences
-5. **View Saved**: Click the "Saved Anime" button to see your saved list
-6. **Details**: Click on any saved anime to view more details
+1. **Browse Anime**: The main screen displays anime one at a time with key information
+2. **Take Actions**: Use the buttons to:
+   - **Skip**: Move to the next anime
+   - **Save**: Add the anime to your saved list
+   - **Seen It**: Mark the anime as already watched
+3. **Filter Options**: Click the "Filters" button to set preferences for:
+   - Genres
+   - Year range
+   - Minimum score
+4. **View Lists**: Access your saved and seen anime lists from the side panel
 
-## Technical Details
+## Technologies Used
 
-- Built with vanilla JavaScript, HTML, and CSS
-- Uses the [Jikan API](https://jikan.moe/) (unofficial MyAnimeList API) for anime data
-- Implements a recommendation system based on user preferences
-- Stores user data in browser's localStorage
+- HTML5, CSS3, and JavaScript
+- [Jikan API](https://jikan.moe/) - Unofficial MyAnimeList API
+- LocalStorage for saving user preferences and lists
 
-## Deployment
+## Installation
 
-This application can be hosted on GitHub Pages as it's a client-side only application.
+No installation required! This is a client-side web application that runs in your browser.
 
-To deploy:
-1. Push the code to a GitHub repository
-2. Enable GitHub Pages in the repository settings
-3. Set the source to the main branch
+1. Clone the repository:
+```
+git clone https://github.com/your-username/anime-vault.git
+```
 
-## Development
+2. Open `index.html` in your web browser
 
-To run locally:
-1. Clone the repository
-2. Open the project folder
-3. Start a local server (e.g., `python -m http.server`)
-4. Open your browser to the local server address (typically `http://localhost:8000`)
+## Credits
 
-## Future Enhancements
+- Anime data provided by [MyAnimeList](https://myanimelist.net/) via the [Jikan API](https://jikan.moe/)
+- Icons from [Font Awesome](https://fontawesome.com/)
 
-- Add user accounts for cross-device synchronization
-- Implement more advanced recommendation algorithms
-- Add social features to share recommendations
-- Expand filtering options
-- Add seasonal anime highlights
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

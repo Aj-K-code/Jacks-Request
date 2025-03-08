@@ -1,23 +1,29 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Constants
+    const JIKAN_API_BASE = 'https://api.jikan.moe/v4';
+    const STORAGE_KEYS = {
+        SAVED_ANIME: 'animeVault_savedAnime',
+        SEEN_ANIME: 'animeVault_seenAnime',
+        FILTERS: 'animeVault_filters'
+    };
+
     // DOM Elements
-    const animeTitle = document.getElementById('anime-title');
-    const animeSynopsis = document.getElementById('anime-synopsis');
     const animeImage = document.getElementById('anime-image');
+    const animeTitle = document.getElementById('anime-title');
     const animeYear = document.getElementById('anime-year');
     const animeEpisodes = document.getElementById('anime-episodes');
     const animeScore = document.getElementById('anime-score');
+    const animeSynopsis = document.getElementById('anime-synopsis');
     const animeGenres = document.getElementById('anime-genres');
-    const swipeLeftButton = document.getElementById('swipe-left');
-    const swipeRightButton = document.getElementById('swipe-right');
-    const swipeUpButton = document.getElementById('swipe-up');
+    
+    // Action buttons
+    const skipButton = document.getElementById('skip-button');
+    const saveButton = document.getElementById('save-button');
+    const seenButton = document.getElementById('seen-button');
+    
+    // Filter elements
     const filterButton = document.getElementById('filter-button');
     const filterContent = document.getElementById('filter-content');
-    const savedButton = document.getElementById('saved-button');
-    const savedContent = document.getElementById('saved-content');
-    const savedList = document.getElementById('saved-list');
-    const seenButton = document.getElementById('seen-button');
-    const seenContent = document.getElementById('seen-content');
-    const seenList = document.getElementById('seen-list');
     const genreSelect = document.getElementById('genre-select');
     const yearMin = document.getElementById('year-min');
     const yearMax = document.getElementById('year-max');
@@ -25,89 +31,101 @@ document.addEventListener('DOMContentLoaded', () => {
     const scoreValue = document.getElementById('score-value');
     const applyFiltersButton = document.getElementById('apply-filters');
     const resetFiltersButton = document.getElementById('reset-filters');
+    
+    // Saved and Seen anime panels
+    const savedListButton = document.getElementById('saved-list-button');
+    const savedContent = document.getElementById('saved-content');
+    const savedList = document.getElementById('saved-list');
+    const seenListButton = document.getElementById('seen-list-button');
+    const seenContent = document.getElementById('seen-content');
+    const seenList = document.getElementById('seen-list');
+    
+    // Modal elements
     const modal = document.getElementById('modal');
     const modalContent = document.getElementById('modal-content');
     const closeModal = document.querySelector('.close');
-
-    // App State
-    let currentAnime = null;
+    
+    // State
     let animeQueue = [];
-    let savedAnimes = JSON.parse(localStorage.getItem('savedAnimes')) || [];
-    let seenAnimes = JSON.parse(localStorage.getItem('seenAnimes')) || [];
-    let userPreferences = JSON.parse(localStorage.getItem('userPreferences')) || {
-        genres: {},
-        studios: {},
-        themes: {},
-        ratings: {}
-    };
-    let allGenres = [];
-    let filters = {
+    let currentAnime = null;
+    let savedAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVED_ANIME)) || [];
+    let seenAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEEN_ANIME)) || [];
+    let genres = [];
+    let filters = JSON.parse(localStorage.getItem(STORAGE_KEYS.FILTERS)) || {
         genres: [],
         yearMin: null,
         yearMax: null,
         scoreMin: 0
     };
-    
-    // Constants
-    const JIKAN_API_BASE = 'https://api.jikan.moe/v4';
-    const RATE_LIMIT_DELAY = 1000; // Jikan API has rate limits
-    
+
     // Initialize the app
     const init = async () => {
-        await loadGenres();
-        updateSavedList();
-        updateSeenList();
-        loadAnimeQueue();
-        setupEventListeners();
-        setupTouchEvents();
-    };
-    
-    // Load all available genres for filter
-    const loadGenres = async () => {
         try {
-            const response = await fetch(`${JIKAN_API_BASE}/genres/anime`);
-            const data = await response.json();
-            
-            if (data.data && data.data.length > 0) {
-                allGenres = data.data;
-                populateGenreFilter(allGenres);
-            }
+            await loadGenres();
+            populateGenreSelect();
+            applyStoredFilters();
+            await loadAnimeQueue();
+            displayNextAnime();
+            setupEventListeners();
         } catch (error) {
-            console.error('Error loading genres:', error);
+            console.error('Initialization error:', error);
+            animeSynopsis.textContent = 'Error loading data. Please try refreshing the page.';
         }
     };
-    
-    // Populate genre filter dropdown
-    const populateGenreFilter = (genres) => {
+
+    // Load available genres from API
+    const loadGenres = async () => {
+        try {
+            console.log('Fetching genres from API...');
+            const response = await fetch(`${JIKAN_API_BASE}/genres/anime`);
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status} - ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            console.log('Genres fetched successfully:', data);
+            genres = data.data;
+        } catch (error) {
+            console.error('Error loading genres:', error);
+            throw new Error('Failed to load genres. Please check your connection and try again.');
+        }
+    };
+
+    // Populate genre select dropdown
+    const populateGenreSelect = () => {
         genreSelect.innerHTML = '';
         genres.forEach(genre => {
             const option = document.createElement('option');
             option.value = genre.mal_id;
             option.textContent = genre.name;
+            option.selected = filters.genres.includes(parseInt(genre.mal_id));
             genreSelect.appendChild(option);
         });
     };
-    
-    // Load anime queue based on filters and preferences
+
+    // Apply stored filters to the UI
+    const applyStoredFilters = () => {
+        if (filters.yearMin) yearMin.value = filters.yearMin;
+        if (filters.yearMax) yearMax.value = filters.yearMax;
+        scoreMin.value = filters.scoreMin;
+        scoreValue.textContent = filters.scoreMin;
+    };
+
+    // Load anime queue based on filters
     const loadAnimeQueue = async () => {
-        if (animeQueue.length > 5) return; // Only load more if queue is getting low
-        
         try {
-            // Show loading state
-            animeTitle.textContent = 'Loading...';
-            animeSynopsis.textContent = 'Finding your next anime...';
-            animeImage.src = 'https://via.placeholder.com/400x225';
-            animeGenres.innerHTML = '';
+            console.log('Loading anime queue with filters:', filters);
             
-            // Build query parameters based on filters and preferences
-            let queryParams = new URLSearchParams();
+            // Build query parameters
+            const queryParams = new URLSearchParams();
             
-            // Apply genre filters if any
+            // Add genres if selected
             if (filters.genres.length > 0) {
                 queryParams.append('genres', filters.genres.join(','));
             }
             
-            // Apply year filter if set
+            // Add year range if specified
             if (filters.yearMin) {
                 queryParams.append('start_date', `${filters.yearMin}-01-01`);
             }
@@ -115,475 +133,214 @@ document.addEventListener('DOMContentLoaded', () => {
                 queryParams.append('end_date', `${filters.yearMax}-12-31`);
             }
             
-            // Apply score filter
+            // Add minimum score
             if (filters.scoreMin > 0) {
                 queryParams.append('min_score', filters.scoreMin);
             }
             
-            // Add order by score for better recommendations
-            queryParams.append('order_by', 'score');
-            queryParams.append('sort', 'desc');
+            // Add sorting and pagination
+            queryParams.append('sort', 'score');
+            queryParams.append('order_by', 'desc');
+            queryParams.append('limit', 25);
+            queryParams.append('page', Math.floor(Math.random() * 5) + 1); // Random page for variety
             
-            // Get a random page to increase variety
-            const randomPage = Math.floor(Math.random() * 20) + 1;
-            queryParams.append('page', randomPage);
+            console.log(`API request: ${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
             
             // Fetch anime list
-            console.log(`Fetching anime from: ${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
             const response = await fetch(`${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
             
             if (!response.ok) {
-                throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+                throw new Error(`API error: ${response.status} - ${response.statusText}`);
             }
             
             const data = await response.json();
+            console.log('Anime data fetched successfully:', data);
             
-            if (data.data && data.data.length > 0) {
-                console.log(`Received ${data.data.length} anime from API`);
-                // Filter out anime that are already saved
-                const newAnime = data.data.filter(anime => 
-                    !savedAnimes.some(saved => saved.mal_id === anime.mal_id) &&
-                    !seenAnimes.some(seen => seen.mal_id === anime.mal_id)
-                );
+            // Filter out already saved or seen anime
+            animeQueue = data.data.filter(anime => 
+                !savedAnime.some(saved => saved.mal_id === anime.mal_id) && 
+                !seenAnime.some(seen => seen.mal_id === anime.mal_id)
+            );
+            
+            // If queue is empty, try with different filters
+            if (animeQueue.length === 0) {
+                console.log('No new anime found with current filters. Trying with broader criteria...');
+                // Reset filters temporarily to get more results
+                const tempQueryParams = new URLSearchParams();
+                tempQueryParams.append('sort', 'score');
+                tempQueryParams.append('order_by', 'desc');
+                tempQueryParams.append('limit', 25);
+                tempQueryParams.append('page', Math.floor(Math.random() * 10) + 1);
                 
-                // Add to queue
-                animeQueue = [...animeQueue, ...newAnime];
-                console.log(`Added ${newAnime.length} new anime to queue. Queue size: ${animeQueue.length}`);
+                const tempResponse = await fetch(`${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`);
                 
-                // Display first anime if none is currently displayed
-                if (!currentAnime) {
-                    displayNextAnime();
+                if (!tempResponse.ok) {
+                    throw new Error(`API error: ${tempResponse.status} - ${tempResponse.statusText}`);
                 }
-            } else {
-                console.warn('No anime found in API response');
-                animeTitle.textContent = 'No anime found';
-                animeSynopsis.textContent = 'Try adjusting your filters';
+                
+                const tempData = await tempResponse.json();
+                animeQueue = tempData.data.filter(anime => 
+                    !savedAnime.some(saved => saved.mal_id === anime.mal_id) && 
+                    !seenAnime.some(seen => seen.mal_id === anime.mal_id)
+                );
             }
+            
+            // Shuffle the queue for variety
+            animeQueue = shuffleArray(animeQueue);
+            
+            console.log(`Loaded ${animeQueue.length} anime into queue`);
         } catch (error) {
-            console.error('Error loading anime:', error);
-            animeTitle.textContent = 'Error loading anime';
-            animeSynopsis.textContent = `Please try again later. Error: ${error.message}`;
-        }
-    };
-    
-    // Display the next anime in the queue
-    const displayNextAnime = () => {
-        if (animeQueue.length === 0) {
-            loadAnimeQueue();
-            return;
-        }
-        
-        currentAnime = animeQueue.shift();
-        displayAnime(currentAnime);
-        
-        // If queue is getting low, load more anime
-        if (animeQueue.length < 3) {
-            setTimeout(loadAnimeQueue, RATE_LIMIT_DELAY);
+            console.error('Error loading anime queue:', error);
+            throw new Error('Failed to load anime. Please check your connection and try again.');
         }
     };
 
-    // Display anime details on the card
-    const displayAnime = (anime) => {
-        animeTitle.textContent = anime.title;
-        animeSynopsis.textContent = anime.synopsis || 'No synopsis available';
-        animeImage.src = anime.images.jpg.large_image_url || anime.images.jpg.image_url;
-        animeYear.textContent = anime.year ? `Year: ${anime.year}` : '';
-        animeEpisodes.textContent = `Episodes: ${anime.episodes || 'Unknown'}`;
-        animeScore.textContent = anime.score ? `Score: ${anime.score}` : '';
+    // Display the next anime in the queue
+    const displayNextAnime = async () => {
+        if (animeQueue.length === 0) {
+            try {
+                await loadAnimeQueue();
+                if (animeQueue.length === 0) {
+                    displayNoMoreAnime();
+                    return;
+                }
+            } catch (error) {
+                console.error('Error refreshing anime queue:', error);
+                animeSynopsis.textContent = 'Error loading more anime. Please try refreshing the page.';
+                return;
+            }
+        }
+        
+        currentAnime = animeQueue.shift();
+        
+        // Update UI with anime details
+        animeImage.src = currentAnime.images.jpg.large_image_url || 'https://via.placeholder.com/400x225?text=No+Image';
+        animeTitle.textContent = currentAnime.title;
+        animeYear.textContent = currentAnime.year ? `${currentAnime.year}` : 'Year: Unknown';
+        animeEpisodes.textContent = currentAnime.episodes ? `${currentAnime.episodes} eps` : 'Episodes: Unknown';
+        animeScore.textContent = currentAnime.score ? `★ ${currentAnime.score}` : 'Score: N/A';
+        animeSynopsis.textContent = currentAnime.synopsis || 'No synopsis available.';
         
         // Display genres
         animeGenres.innerHTML = '';
-        if (anime.genres && anime.genres.length > 0) {
-            anime.genres.forEach(genre => {
+        if (currentAnime.genres && currentAnime.genres.length > 0) {
+            currentAnime.genres.forEach(genre => {
                 const genreTag = document.createElement('span');
                 genreTag.className = 'genre-tag';
                 genreTag.textContent = genre.name;
                 animeGenres.appendChild(genreTag);
             });
         }
-        
-        // Add animation class
-        const card = document.querySelector('.card');
-        card.classList.remove('fade-in');
-        void card.offsetWidth; // Trigger reflow
-        card.classList.add('fade-in');
     };
 
-    // Save anime to favorites and update user preferences
+    // Display message when no more anime are available
+    const displayNoMoreAnime = () => {
+        animeImage.src = 'https://via.placeholder.com/400x225?text=No+More+Anime';
+        animeTitle.textContent = 'No More Anime Found';
+        animeYear.textContent = '';
+        animeEpisodes.textContent = '';
+        animeScore.textContent = '';
+        animeSynopsis.textContent = 'We couldn\'t find any more anime matching your criteria. Try adjusting your filters or check back later!';
+        animeGenres.innerHTML = '';
+    };
+
+    // Save current anime to saved list
     const saveAnime = () => {
         if (!currentAnime) return;
         
-        // Check if anime is already saved
-        if (!savedAnimes.some(anime => anime.mal_id === currentAnime.mal_id)) {
-            savedAnimes.push(currentAnime);
-            localStorage.setItem('savedAnimes', JSON.stringify(savedAnimes));
+        // Check if already saved
+        if (!savedAnime.some(anime => anime.mal_id === currentAnime.mal_id)) {
+            savedAnime.push(currentAnime);
+            localStorage.setItem(STORAGE_KEYS.SAVED_ANIME, JSON.stringify(savedAnime));
             updateSavedList();
-            
-            // Update user preferences based on this anime
-            updateUserPreferences(currentAnime);
         }
     };
 
-    // Update user preferences based on liked anime
-    const updateUserPreferences = (anime) => {
-        // Update genre preferences
-        if (anime.genres) {
-            anime.genres.forEach(genre => {
-                if (!userPreferences.genres[genre.mal_id]) {
-                    userPreferences.genres[genre.mal_id] = 1;
-                } else {
-                    userPreferences.genres[genre.mal_id]++;
-                }
-            });
-        }
-        
-        // Update studio preferences
-        if (anime.studios) {
-            anime.studios.forEach(studio => {
-                if (!userPreferences.studios[studio.mal_id]) {
-                    userPreferences.studios[studio.mal_id] = 1;
-                } else {
-                    userPreferences.studios[studio.mal_id]++;
-                }
-            });
-        }
-        
-        // Update theme preferences
-        if (anime.themes) {
-            anime.themes.forEach(theme => {
-                if (!userPreferences.themes[theme.mal_id]) {
-                    userPreferences.themes[theme.mal_id] = 1;
-                } else {
-                    userPreferences.themes[theme.mal_id]++;
-                }
-            });
-        }
-        
-        // Update rating preference
-        if (anime.score) {
-            const scoreRounded = Math.floor(anime.score);
-            if (!userPreferences.ratings[scoreRounded]) {
-                userPreferences.ratings[scoreRounded] = 1;
-            } else {
-                userPreferences.ratings[scoreRounded]++;
-            }
-        }
-        
-        // Save updated preferences
-        localStorage.setItem('userPreferences', JSON.stringify(userPreferences));
-    };
-
-    // Update the saved anime list in the UI
-    const updateSavedList = () => {
-        savedList.innerHTML = '';
-        
-        if (savedAnimes.length === 0) {
-            savedList.innerHTML = '<li class="saved-item">No saved anime yet</li>';
-            return;
-        }
-        
-        savedAnimes.forEach(anime => {
-            const listItem = document.createElement('li');
-            listItem.className = 'saved-item';
-            listItem.innerHTML = `
-                <h4>${anime.title}</h4>
-                <p>${anime.score ? `Score: ${anime.score}` : ''}</p>
-            `;
-            
-            // Add click event to show details
-            listItem.addEventListener('click', () => showAnimeDetails(anime));
-            
-            savedList.appendChild(listItem);
-        });
-    };
-
-    // Update the seen anime list in the UI
-    const updateSeenList = () => {
-        seenList.innerHTML = '';
-        
-        if (seenAnimes.length === 0) {
-            seenList.innerHTML = '<li class="seen-item">No seen anime yet</li>';
-            return;
-        }
-        
-        seenAnimes.forEach(anime => {
-            const listItem = document.createElement('li');
-            listItem.className = 'seen-item';
-            listItem.innerHTML = `
-                <h4>${anime.title}</h4>
-                <p>${anime.score ? `Score: ${anime.score}` : ''}</p>
-            `;
-            
-            // Add click event to show details
-            listItem.addEventListener('click', () => showAnimeDetails(anime));
-            
-            seenList.appendChild(listItem);
-        });
-    };
-
-    // Show detailed anime information in modal
-    const showAnimeDetails = (anime) => {
-        modalContent.innerHTML = `
-            <div class="anime-detail">
-                <div class="detail-header">
-                    <img src="${anime.images.jpg.large_image_url || anime.images.jpg.image_url}" alt="${anime.title}">
-                    <div>
-                        <h2>${anime.title}</h2>
-                        <p>${anime.title_japanese || ''}</p>
-                        <div class="detail-info">
-                            ${anime.year ? `<span>Year: ${anime.year}</span>` : ''}
-                            <span>Episodes: ${anime.episodes || 'Unknown'}</span>
-                            ${anime.score ? `<span>Score: ${anime.score}</span>` : ''}
-                            ${anime.rating ? `<span>Rating: ${anime.rating}</span>` : ''}
-                        </div>
-                        <div class="genres">
-                            ${anime.genres ? anime.genres.map(genre => `<span class="genre-tag">${genre.name}</span>`).join('') : ''}
-                        </div>
-                    </div>
-                </div>
-                <div class="detail-synopsis">
-                    <h3>Synopsis</h3>
-                    <p>${anime.synopsis || 'No synopsis available'}</p>
-                </div>
-                <div class="detail-actions">
-                    <button class="action-button remove-button" data-id="${anime.mal_id}">Remove from Saved</button>
-                </div>
-            </div>
-        `;
-        
-        // Add event listener to remove button
-        const removeButton = modalContent.querySelector('.remove-button');
-        if (removeButton) {
-            removeButton.addEventListener('click', () => {
-                const animeId = parseInt(removeButton.getAttribute('data-id'));
-                removeSavedAnime(animeId);
-                closeModalWindow();
-            });
-        }
-        
-        modal.style.display = 'block';
-    };
-
-    // Remove anime from saved list
-    const removeSavedAnime = (animeId) => {
-        savedAnimes = savedAnimes.filter(anime => anime.mal_id !== animeId);
-        localStorage.setItem('savedAnimes', JSON.stringify(savedAnimes));
-        updateSavedList();
-    };
-
-    // Save anime to seen list
+    // Mark current anime as seen
     const markAsSeen = () => {
         if (!currentAnime) return;
         
-        // Check if anime is already seen
-        if (!seenAnimes.some(anime => anime.mal_id === currentAnime.mal_id)) {
-            seenAnimes.push(currentAnime);
-            localStorage.setItem('seenAnimes', JSON.stringify(seenAnimes));
+        // Check if already marked as seen
+        if (!seenAnime.some(anime => anime.mal_id === currentAnime.mal_id)) {
+            seenAnime.push(currentAnime);
+            localStorage.setItem(STORAGE_KEYS.SEEN_ANIME, JSON.stringify(seenAnime));
             updateSeenList();
         }
     };
 
-    // Close the modal window
-    const closeModalWindow = () => {
-        modal.style.display = 'none';
-    };
-
-    // Apply filters from the UI
-    const applyFilters = () => {
-        // Get selected genres
-        filters.genres = Array.from(genreSelect.selectedOptions).map(option => option.value);
+    // Update saved anime list in UI
+    const updateSavedList = () => {
+        savedList.innerHTML = '';
         
-        // Get year range
-        filters.yearMin = yearMin.value ? parseInt(yearMin.value) : null;
-        filters.yearMax = yearMax.value ? parseInt(yearMax.value) : null;
-        
-        // Get minimum score
-        filters.scoreMin = parseFloat(scoreMin.value);
-        
-        // Clear current queue and load new anime
-        animeQueue = [];
-        loadAnimeQueue();
-        
-        // Hide filter panel
-        filterContent.classList.add('hidden');
-    };
-
-    // Reset all filters
-    const resetFilters = () => {
-        genreSelect.querySelectorAll('option').forEach(option => {
-            option.selected = false;
-        });
-        
-        yearMin.value = '';
-        yearMax.value = '';
-        scoreMin.value = 0;
-        scoreValue.textContent = '0';
-        
-        filters = {
-            genres: [],
-            yearMin: null,
-            yearMax: null,
-            scoreMin: 0
-        };
-        
-        // Clear current queue and load new anime
-        animeQueue = [];
-        loadAnimeQueue();
-    };
-
-    // Setup touch and mouse events for swipe gestures
-    const setupTouchEvents = () => {
-        let startX = 0;
-        let startY = 0;
-        let endX = 0;
-        let endY = 0;
-        let isMouseDown = false;
-
-        // Create touch area if it doesn't exist
-        let touchArea = document.querySelector('.touch-area');
-        if (!touchArea) {
-            touchArea = document.createElement('div');
-            touchArea.className = 'touch-area';
-            const cardContainer = document.querySelector('.card-container');
-            if (cardContainer) {
-                cardContainer.appendChild(touchArea);
-            }
+        if (savedAnime.length === 0) {
+            const emptyMessage = document.createElement('li');
+            emptyMessage.textContent = 'No saved anime yet.';
+            savedList.appendChild(emptyMessage);
+            return;
         }
-
-        // Touch events
-        touchArea.addEventListener('touchstart', (event) => {
-            event.preventDefault(); // Prevent scrolling
-            const touch = event.touches[0];
-            startX = touch.clientX;
-            startY = touch.clientY;
-        });
-
-        touchArea.addEventListener('touchend', (event) => {
-            event.preventDefault();
-            const touch = event.changedTouches[0];
-            endX = touch.clientX;
-            endY = touch.clientY;
-            handleSwipeGesture();
-        });
-
-        // Mouse events
-        touchArea.addEventListener('mousedown', (event) => {
-            event.preventDefault();
-            isMouseDown = true;
-            startX = event.clientX;
-            startY = event.clientY;
-        });
-
-        touchArea.addEventListener('mouseup', (event) => {
-            event.preventDefault();
-            if (isMouseDown) {
-                endX = event.clientX;
-                endY = event.clientY;
-                isMouseDown = false;
-                handleSwipeGesture();
-            }
-        });
-
-        touchArea.addEventListener('mouseleave', (event) => {
-            if (isMouseDown) {
-                endX = event.clientX;
-                endY = event.clientY;
-                isMouseDown = false;
-                handleSwipeGesture();
-            }
-        });
-
-        // Make sure buttons still work
-        const ensureButtonsWork = () => {
-            const buttons = document.querySelectorAll('.swipe-button');
-            buttons.forEach(button => {
-                button.addEventListener('click', (event) => {
-                    event.stopPropagation(); // Prevent the touch area from capturing the event
-                });
-            });
-        };
         
-        ensureButtonsWork();
+        savedAnime.forEach(anime => {
+            const listItem = document.createElement('li');
+            listItem.className = 'saved-item';
+            listItem.textContent = anime.title;
+            listItem.addEventListener('click', () => showAnimeDetails(anime));
+            savedList.appendChild(listItem);
+        });
     };
 
-    // Handle swipe gestures
-    const handleSwipeGesture = () => {
-        const diffX = endX - startX;
-        const diffY = endY - startY;
-        const minSwipeDistance = 50; // Minimum distance to count as a swipe
-
-        // Only process if there was significant movement
-        if (Math.abs(diffX) < minSwipeDistance && Math.abs(diffY) < minSwipeDistance) {
-            return; // Not a swipe, just a tap
-        }
-
-        const card = document.querySelector('.card');
+    // Update seen anime list in UI
+    const updateSeenList = () => {
+        seenList.innerHTML = '';
         
-        if (Math.abs(diffX) > Math.abs(diffY)) {
-            // Horizontal swipe
-            if (diffX > minSwipeDistance) {
-                // Swipe right
-                if (card) card.classList.add('swipe-right-animation');
-                setTimeout(() => {
-                    saveAnime();
-                    if (card) card.classList.remove('swipe-right-animation');
-                    displayNextAnime();
-                }, 500);
-            } else if (diffX < -minSwipeDistance) {
-                // Swipe left
-                if (card) card.classList.add('swipe-left-animation');
-                setTimeout(() => {
-                    if (card) card.classList.remove('swipe-left-animation');
-                    displayNextAnime();
-                }, 500);
-            }
-        } else {
-            // Vertical swipe
-            if (diffY < -minSwipeDistance) {
-                // Swipe up
-                if (card) card.classList.add('swipe-up-animation');
-                setTimeout(() => {
-                    markAsSeen();
-                    if (card) card.classList.remove('swipe-up-animation');
-                    displayNextAnime();
-                }, 500);
-            } else if (diffY > minSwipeDistance) {
-                // Swipe down
-                displayNextAnime();
-            }
+        if (seenAnime.length === 0) {
+            const emptyMessage = document.createElement('li');
+            emptyMessage.textContent = 'No seen anime yet.';
+            seenList.appendChild(emptyMessage);
+            return;
         }
+        
+        seenAnime.forEach(anime => {
+            const listItem = document.createElement('li');
+            listItem.className = 'seen-item';
+            listItem.textContent = anime.title;
+            listItem.addEventListener('click', () => showAnimeDetails(anime));
+            seenList.appendChild(listItem);
+        });
+    };
+
+    // Show detailed information about an anime in a modal
+    const showAnimeDetails = (anime) => {
+        modalContent.innerHTML = `
+            <div class="modal-anime">
+                <img src="${anime.images.jpg.large_image_url || 'https://via.placeholder.com/400x225?text=No+Image'}" alt="${anime.title}">
+                <h2>${anime.title}</h2>
+                <p><strong>Original Title:</strong> ${anime.title_japanese || 'N/A'}</p>
+                <p><strong>Year:</strong> ${anime.year || 'Unknown'}</p>
+                <p><strong>Episodes:</strong> ${anime.episodes || 'Unknown'}</p>
+                <p><strong>Score:</strong> ${anime.score || 'N/A'}</p>
+                <p><strong>Genres:</strong> ${anime.genres.map(g => g.name).join(', ') || 'N/A'}</p>
+                <p><strong>Synopsis:</strong> ${anime.synopsis || 'No synopsis available.'}</p>
+                <p><a href="${anime.url}" target="_blank">View on MyAnimeList</a></p>
+            </div>
+        `;
+        modal.style.display = 'block';
     };
 
     // Setup all event listeners
     const setupEventListeners = () => {
-        // Swipe buttons
-        swipeLeftButton.addEventListener('click', () => {
-            const card = document.querySelector('.card');
-            if (card) card.classList.add('swipe-left-animation');
-            setTimeout(() => {
-                if (card) card.classList.remove('swipe-left-animation');
-                displayNextAnime();
-            }, 500);
+        // Action buttons
+        skipButton.addEventListener('click', () => {
+            displayNextAnime();
         });
         
-        swipeRightButton.addEventListener('click', () => {
-            const card = document.querySelector('.card');
-            if (card) card.classList.add('swipe-right-animation');
-            setTimeout(() => {
-                saveAnime();
-                if (card) card.classList.remove('swipe-right-animation');
-                displayNextAnime();
-            }, 500);
+        saveButton.addEventListener('click', () => {
+            saveAnime();
+            displayNextAnime();
         });
 
-        swipeUpButton.addEventListener('click', () => {
-            const card = document.querySelector('.card');
-            if (card) card.classList.add('swipe-up-animation');
-            setTimeout(() => {
-                markAsSeen();
-                if (card) card.classList.remove('swipe-up-animation');
-                displayNextAnime();
-            }, 500);
+        seenButton.addEventListener('click', () => {
+            markAsSeen();
+            displayNextAnime();
         });
         
         // Panel toggle buttons
@@ -593,33 +350,93 @@ document.addEventListener('DOMContentLoaded', () => {
             seenContent.classList.add('hidden');
         });
         
-        savedButton.addEventListener('click', () => {
+        savedListButton.addEventListener('click', () => {
             savedContent.classList.toggle('hidden');
             filterContent.classList.add('hidden');
             seenContent.classList.add('hidden');
+            updateSavedList();
         });
-
-        seenButton.addEventListener('click', () => {
+        
+        seenListButton.addEventListener('click', () => {
             seenContent.classList.toggle('hidden');
             filterContent.classList.add('hidden');
             savedContent.classList.add('hidden');
+            updateSeenList();
         });
-
+        
         // Filter controls
         scoreMin.addEventListener('input', () => {
             scoreValue.textContent = scoreMin.value;
         });
         
-        applyFiltersButton.addEventListener('click', applyFilters);
-        resetFiltersButton.addEventListener('click', resetFilters);
-        
-        // Modal close button
-        closeModal.addEventListener('click', closeModalWindow);
-        window.addEventListener('click', (event) => {
-            if (event.target === modal) {
-                closeModalWindow();
+        applyFiltersButton.addEventListener('click', async () => {
+            // Get selected genres
+            const selectedGenres = Array.from(genreSelect.selectedOptions).map(option => parseInt(option.value));
+            
+            // Update filters
+            filters = {
+                genres: selectedGenres,
+                yearMin: yearMin.value ? parseInt(yearMin.value) : null,
+                yearMax: yearMax.value ? parseInt(yearMax.value) : null,
+                scoreMin: parseFloat(scoreMin.value)
+            };
+            
+            // Save filters to localStorage
+            localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify(filters));
+            
+            // Reload anime queue with new filters
+            try {
+                await loadAnimeQueue();
+                displayNextAnime();
+                filterContent.classList.add('hidden');
+            } catch (error) {
+                console.error('Error applying filters:', error);
+                alert('Error applying filters. Please try again.');
             }
         });
+        
+        resetFiltersButton.addEventListener('click', () => {
+            // Reset filter UI
+            Array.from(genreSelect.options).forEach(option => {
+                option.selected = false;
+            });
+            yearMin.value = '';
+            yearMax.value = '';
+            scoreMin.value = 0;
+            scoreValue.textContent = '0';
+            
+            // Reset filters object
+            filters = {
+                genres: [],
+                yearMin: null,
+                yearMax: null,
+                scoreMin: 0
+            };
+            
+            // Save reset filters to localStorage
+            localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify(filters));
+        });
+        
+        // Modal
+        closeModal.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+        
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    };
+
+    // Utility function to shuffle an array
+    const shuffleArray = (array) => {
+        const newArray = [...array];
+        for (let i = newArray.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+        }
+        return newArray;
     };
 
     // Start the app

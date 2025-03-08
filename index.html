@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AnimeSwipe - Find Your Next Anime</title>
+    <title>AnimeVault - Discover Your Next Anime</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>AnimeSwipe</h1>
-            <p>Find your next favorite anime</p>
+            <h1>AnimeVault</h1>
+            <p>Discover your next favorite anime</p>
         </header>
 
         <main>
@@ -33,15 +33,15 @@
                         </div>
                     </div>
                 </div>
-                <div class="swipe-buttons">
-                    <button id="swipe-left" class="swipe-button left">
-                        <i class="fas fa-times"></i>
+                <div class="action-buttons">
+                    <button id="skip-button" class="action-button skip">
+                        <i class="fas fa-times"></i> Skip
                     </button>
-                    <button id="swipe-up" class="swipe-button up">
-                        <i class="fas fa-eye"></i>
+                    <button id="seen-button" class="action-button seen">
+                        <i class="fas fa-eye"></i> Seen It
                     </button>
-                    <button id="swipe-right" class="swipe-button right">
-                        <i class="fas fa-heart"></i>
+                    <button id="save-button" class="action-button save">
+                        <i class="fas fa-heart"></i> Save
                     </button>
                 </div>
             </div>
@@ -78,7 +78,7 @@
                 </div>
 
                 <div class="saved-panel">
-                    <button id="saved-button" class="panel-button">
+                    <button id="saved-list-button" class="panel-button">
                         <i class="fas fa-bookmark"></i> Saved Anime
                     </button>
                     <div id="saved-content" class="panel-content hidden">
@@ -90,7 +90,7 @@
                 </div>
                 
                 <div class="seen-panel">
-                    <button id="seen-button" class="panel-button">
+                    <button id="seen-list-button" class="panel-button">
                         <i class="fas fa-eye"></i> Seen Anime
                     </button>
                     <div id="seen-content" class="panel-content hidden">
