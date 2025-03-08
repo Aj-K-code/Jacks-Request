@@ -1,6 +1,6 @@
 # AnimeSwipe
 
-AnimeSwipe is a Tinder-style anime recommendation web application that helps you discover new anime based on your preferences. The app learns from your swipes to provide increasingly personalized recommendations over time.
+This is for Jack. AnimeSwipe is a Tinder-style anime recommendation web application that helps you discover new anime based on your preferences. The app learns from your swipes to provide increasingly personalized recommendations over time.
 
 ## Features
 
