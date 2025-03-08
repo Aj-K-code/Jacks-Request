@@ -129,10 +129,17 @@ document.addEventListener('DOMContentLoaded', () => {
             queryParams.append('page', randomPage);
             
             // Fetch anime list
+            console.log(`Fetching anime from: ${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
             const response = await fetch(`${JIKAN_API_BASE}/anime?${queryParams.toString()}`);
+            
+            if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+            }
+            
             const data = await response.json();
             
             if (data.data && data.data.length > 0) {
+                console.log(`Received ${data.data.length} anime from API`);
                 // Filter out anime that are already saved
                 const newAnime = data.data.filter(anime => 
                     !savedAnimes.some(saved => saved.mal_id === anime.mal_id) &&
@@ -141,19 +148,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Add to queue
                 animeQueue = [...animeQueue, ...newAnime];
+                console.log(`Added ${newAnime.length} new anime to queue. Queue size: ${animeQueue.length}`);
                 
                 // Display first anime if none is currently displayed
                 if (!currentAnime) {
                     displayNextAnime();
                 }
             } else {
+                console.warn('No anime found in API response');
                 animeTitle.textContent = 'No anime found';
                 animeSynopsis.textContent = 'Try adjusting your filters';
             }
         } catch (error) {
             console.error('Error loading anime:', error);
             animeTitle.textContent = 'Error loading anime';
-            animeSynopsis.textContent = 'Please try again later';
+            animeSynopsis.textContent = `Please try again later. Error: ${error.message}`;
         }
     };
     
