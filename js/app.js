@@ -273,45 +273,98 @@ document.addEventListener('DOMContentLoaded', () => {
             if (animeQueue.length < 5) {
                 console.log('Not enough new anime found with current filters. Trying with broader criteria...');
                 
-                // Try a different page with the same filters first
-                const newPage = (randomPage % 5) + 1; // Cycle through pages 1-5
-                const tempQueryParams = new URLSearchParams(queryParams);
-                tempQueryParams.set('page', newPage);
+                // Try more pages with the same filters first (maintaining genre selection)
+                let additionalAnime = [];
                 
-                let tempUrl = `${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`;
-                console.log(`Trying different page: ${tempUrl}`);
-                
-                let tempResponse = await fetchWithRetry(tempUrl, options);
-                let tempData = await tempResponse.json();
-                
-                // Filter the new results
-                if (tempData.data && tempData.data.length > 0) {
-                    const newAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
-                    animeQueue = [...animeQueue, ...newAnime];
+                // Try up to 3 more pages with the same filters
+                for (let i = 0; i < 3 && additionalAnime.length < 10; i++) {
+                    const newPage = ((randomPage + i) % 5) + 1; // Cycle through pages 1-5
+                    const tempQueryParams = new URLSearchParams(queryParams);
+                    tempQueryParams.set('page', newPage);
+                    
+                    let tempUrl = `${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`;
+                    console.log(`Trying different page with same filters: ${tempUrl}`);
+                    
+                    try {
+                        let tempResponse = await fetchWithRetry(tempUrl, options);
+                        let tempData = await tempResponse.json();
+                        
+                        // Filter the new results
+                        if (tempData.data && tempData.data.length > 0) {
+                            const newAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
+                            additionalAnime = [...additionalAnime, ...newAnime];
+                        }
+                    } catch (error) {
+                        console.warn(`Error fetching additional page ${newPage}:`, error);
+                        // Continue with the next iteration
+                    }
+                    
+                    // Add a small delay between requests to respect API rate limits
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
                 
-                // If still not enough, try with broader criteria
+                animeQueue = [...animeQueue, ...additionalAnime];
+                
+                // If still not enough, try with slightly broader criteria but KEEP the genre filter
                 if (animeQueue.length < 5) {
-                    // Reset filters temporarily to get more results
+                    // Create broader params but maintain genre filter
                     const broaderQueryParams = new URLSearchParams();
+                    
+                    // IMPORTANT: Keep the genre filter
+                    if (filters.genres.length > 0) {
+                        broaderQueryParams.append('genres', filters.genres.join(','));
+                    }
+                    
+                    // Remove other restrictive filters but keep sorting
                     broaderQueryParams.append('order_by', 'score');
                     broaderQueryParams.append('sort', 'desc');
                     broaderQueryParams.append('limit', 25);
-                    broaderQueryParams.append('page', Math.floor(Math.random() * 5) + 1);
+                    broaderQueryParams.append('page', Math.floor(Math.random() * 10) + 1); // Try a wider range of pages
                     
-                    tempUrl = `${JIKAN_API_BASE}/anime?${broaderQueryParams.toString()}`;
-                    console.log(`Broader API request: ${tempUrl}`);
+                    const tempUrl = `${JIKAN_API_BASE}/anime?${broaderQueryParams.toString()}`;
+                    console.log(`Broader API request (keeping genre): ${tempUrl}`);
                     
-                    tempResponse = await fetchWithRetry(tempUrl, options);
-                    tempData = await tempResponse.json();
-                    
-                    if (!tempData.data || tempData.data.length === 0) {
-                        console.warn('No anime found in API response with broader criteria');
-                        throw new Error('No anime found in API response with broader criteria');
+                    try {
+                        const tempResponse = await fetchWithRetry(tempUrl, options);
+                        const tempData = await tempResponse.json();
+                        
+                        if (tempData.data && tempData.data.length > 0) {
+                            const broaderAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
+                            animeQueue = [...animeQueue, ...broaderAnime];
+                        }
+                    } catch (error) {
+                        console.warn('Error fetching with broader criteria:', error);
+                        // Continue with what we have
                     }
-                    
-                    const broaderAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
-                    animeQueue = [...animeQueue, ...broaderAnime];
+                }
+                
+                // Only as a last resort, if we still don't have enough and there are genres selected,
+                // check if we've shown most available anime in this genre
+                if (animeQueue.length < 3 && filters.genres.length > 0) {
+                    try {
+                        // Check how many total anime exist for this genre
+                        const genreCheckUrl = `${JIKAN_API_BASE}/anime?genres=${filters.genres.join(',')}&limit=1`;
+                        const genreCheckResponse = await fetchWithRetry(genreCheckUrl, options);
+                        const genreCheckData = await genreCheckResponse.json();
+                        
+                        if (genreCheckData.pagination && genreCheckData.pagination.items) {
+                            const totalInGenre = genreCheckData.pagination.items.total;
+                            const totalShownInGenre = shownAnime.filter(anime => 
+                                anime.genres && anime.genres.some(g => filters.genres.includes(g.mal_id))
+                            ).length;
+                            
+                            console.log(`Total anime in selected genre(s): ${totalInGenre}, Total shown: ${totalShownInGenre}`);
+                            
+                            // If we've shown a significant portion of available anime in this genre
+                            if (totalShownInGenre > totalInGenre * 0.5 || totalShownInGenre > 40) {
+                                console.log('You have seen most anime in this genre. Consider trying a different genre.');
+                                // No longer clearing history - we'll just show the "no more anime" message when appropriate
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Error checking genre totals:', error);
+                        // Continue with what we have
+                    }
                 }
             }
             
@@ -321,18 +374,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Loaded ${animeQueue.length} anime into queue`);
             
             if (animeQueue.length === 0) {
-                // If we still have no anime, clear some of the shown history to allow for repeats
-                // but only after a significant number of anime have been shown
-                if (shownAnime.length > 50) {
-                    console.log('Clearing half of shown anime history to allow some repeats');
-                    shownAnime = shownAnime.slice(Math.floor(shownAnime.length / 2));
-                    localStorage.setItem(STORAGE_KEYS.SHOWN_ANIME, JSON.stringify(shownAnime));
-                    
-                    // Try loading again with the reduced history
-                    return loadAnimeQueue();
-                }
-                
-                throw new Error('No new anime found that you haven\'t already saved, seen, or been shown');
+                // No longer clearing history to allow repeats
+                // Just inform the user there are no more anime matching their criteria
+                throw new Error('No more anime found that you haven\'t already saved, seen, or been shown. Try different filters!');
             }
         } catch (error) {
             console.error('Error loading anime queue:', error);
