@@ -4,10 +4,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const STORAGE_KEYS = {
         SAVED_ANIME: 'animeVault_savedAnime',
         SEEN_ANIME: 'animeVault_seenAnime',
+        SHOWN_ANIME: 'animeVault_shownAnime', // New key for tracking shown anime
         FILTERS: 'animeVault_filters'
     };
     const DELAY_BETWEEN_REQUESTS = 4000; // 4 seconds between requests to respect rate limits
     const MAX_RETRIES = 3; // Maximum number of retries for API requests
+    const MAX_SHOWN_HISTORY = 100; // Maximum number of anime to keep in shown history
 
     // DOM Elements
     const animeImage = document.getElementById('anime-image');
@@ -52,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentAnime = null;
     let savedAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVED_ANIME)) || [];
     let seenAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEEN_ANIME)) || [];
+    let shownAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHOWN_ANIME)) || []; // Track previously shown anime
     let genres = [];
     let filters = JSON.parse(localStorage.getItem(STORAGE_KEYS.FILTERS)) || {
         genres: [],
@@ -104,8 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Load saved and seen anime from localStorage
             savedAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SAVED_ANIME)) || [];
             seenAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SEEN_ANIME)) || [];
+            shownAnime = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHOWN_ANIME)) || [];
             
-            console.log(`Loaded ${savedAnime.length} saved anime and ${seenAnime.length} seen anime from localStorage`);
+            console.log(`Loaded ${savedAnime.length} saved anime, ${seenAnime.length} seen anime, and ${shownAnime.length} previously shown anime from localStorage`);
             
             // Update lists in UI
             updateSavedList();
@@ -227,8 +231,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add sorting and pagination
             queryParams.append('order_by', 'score');
             queryParams.append('sort', 'desc');
-            queryParams.append('limit', 20);
-            queryParams.append('page', Math.floor(Math.random() * 3) + 1); // Random page for variety
+            queryParams.append('limit', 25); // Increased from 20 to 25
+            
+            // Use a wider range of pages for more variety
+            const randomPage = Math.floor(Math.random() * 5) + 1; // Random page 1-5 instead of 1-3
+            queryParams.append('page', randomPage);
             
             const url = `${JIKAN_API_BASE}/anime?${queryParams.toString()}`;
             console.log(`API request: ${url}`);
@@ -252,38 +259,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('No anime found in API response');
             }
             
-            // Filter out already saved or seen anime
-            animeQueue = data.data.filter(anime => 
-                !savedAnime.some(saved => saved.mal_id === anime.mal_id) && 
-                !seenAnime.some(seen => seen.mal_id === anime.mal_id)
-            );
+            // Get all anime IDs to exclude (saved, seen, and previously shown)
+            const excludeIds = [
+                ...savedAnime.map(anime => anime.mal_id),
+                ...seenAnime.map(anime => anime.mal_id),
+                ...shownAnime.map(anime => anime.mal_id)
+            ];
             
-            // If queue is empty, try with different filters
-            if (animeQueue.length === 0) {
-                console.log('No new anime found with current filters. Trying with broader criteria...');
+            // Filter out already saved, seen, or previously shown anime
+            animeQueue = data.data.filter(anime => !excludeIds.includes(anime.mal_id));
+            
+            // If queue is empty or too small, try with different filters
+            if (animeQueue.length < 5) {
+                console.log('Not enough new anime found with current filters. Trying with broader criteria...');
                 
-                // Reset filters temporarily to get more results
-                const tempQueryParams = new URLSearchParams();
-                tempQueryParams.append('order_by', 'score');
-                tempQueryParams.append('sort', 'desc');
-                tempQueryParams.append('limit', 20);
-                tempQueryParams.append('page', Math.floor(Math.random() * 3) + 1);
+                // Try a different page with the same filters first
+                const newPage = (randomPage % 5) + 1; // Cycle through pages 1-5
+                const tempQueryParams = new URLSearchParams(queryParams);
+                tempQueryParams.set('page', newPage);
                 
-                const tempUrl = `${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`;
-                console.log(`Broader API request: ${tempUrl}`);
+                let tempUrl = `${JIKAN_API_BASE}/anime?${tempQueryParams.toString()}`;
+                console.log(`Trying different page: ${tempUrl}`);
                 
-                const tempResponse = await fetchWithRetry(tempUrl, options);
-                const tempData = await tempResponse.json();
+                let tempResponse = await fetchWithRetry(tempUrl, options);
+                let tempData = await tempResponse.json();
                 
-                if (!tempData.data || tempData.data.length === 0) {
-                    console.warn('No anime found in API response with broader criteria');
-                    throw new Error('No anime found in API response with broader criteria');
+                // Filter the new results
+                if (tempData.data && tempData.data.length > 0) {
+                    const newAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
+                    animeQueue = [...animeQueue, ...newAnime];
                 }
                 
-                animeQueue = tempData.data.filter(anime => 
-                    !savedAnime.some(saved => saved.mal_id === anime.mal_id) && 
-                    !seenAnime.some(seen => seen.mal_id === anime.mal_id)
-                );
+                // If still not enough, try with broader criteria
+                if (animeQueue.length < 5) {
+                    // Reset filters temporarily to get more results
+                    const broaderQueryParams = new URLSearchParams();
+                    broaderQueryParams.append('order_by', 'score');
+                    broaderQueryParams.append('sort', 'desc');
+                    broaderQueryParams.append('limit', 25);
+                    broaderQueryParams.append('page', Math.floor(Math.random() * 5) + 1);
+                    
+                    tempUrl = `${JIKAN_API_BASE}/anime?${broaderQueryParams.toString()}`;
+                    console.log(`Broader API request: ${tempUrl}`);
+                    
+                    tempResponse = await fetchWithRetry(tempUrl, options);
+                    tempData = await tempResponse.json();
+                    
+                    if (!tempData.data || tempData.data.length === 0) {
+                        console.warn('No anime found in API response with broader criteria');
+                        throw new Error('No anime found in API response with broader criteria');
+                    }
+                    
+                    const broaderAnime = tempData.data.filter(anime => !excludeIds.includes(anime.mal_id));
+                    animeQueue = [...animeQueue, ...broaderAnime];
+                }
             }
             
             // Shuffle the queue for variety
@@ -292,7 +321,18 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Loaded ${animeQueue.length} anime into queue`);
             
             if (animeQueue.length === 0) {
-                throw new Error('No new anime found that you haven\'t already saved or seen');
+                // If we still have no anime, clear some of the shown history to allow for repeats
+                // but only after a significant number of anime have been shown
+                if (shownAnime.length > 50) {
+                    console.log('Clearing half of shown anime history to allow some repeats');
+                    shownAnime = shownAnime.slice(Math.floor(shownAnime.length / 2));
+                    localStorage.setItem(STORAGE_KEYS.SHOWN_ANIME, JSON.stringify(shownAnime));
+                    
+                    // Try loading again with the reduced history
+                    return loadAnimeQueue();
+                }
+                
+                throw new Error('No new anime found that you haven\'t already saved, seen, or been shown');
             }
         } catch (error) {
             console.error('Error loading anime queue:', error);
@@ -317,6 +357,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         currentAnime = animeQueue.shift();
+        
+        // Add to shown anime history
+        if (!shownAnime.some(anime => anime.mal_id === currentAnime.mal_id)) {
+            shownAnime.push({
+                mal_id: currentAnime.mal_id,
+                title: currentAnime.title
+            });
+            
+            // Limit the size of shown anime history
+            if (shownAnime.length > MAX_SHOWN_HISTORY) {
+                shownAnime = shownAnime.slice(shownAnime.length - MAX_SHOWN_HISTORY);
+            }
+            
+            // Save to localStorage
+            localStorage.setItem(STORAGE_KEYS.SHOWN_ANIME, JSON.stringify(shownAnime));
+        }
         
         // Update UI with anime details
         animeImage.src = currentAnime.images.jpg.large_image_url || 'https://via.placeholder.com/400x225?text=No+Image';
@@ -359,6 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem(STORAGE_KEYS.SAVED_ANIME, JSON.stringify(savedAnime));
             updateSavedList();
         }
+        
+        displayNextAnime();
     };
 
     // Mark current anime as seen
@@ -371,6 +429,8 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem(STORAGE_KEYS.SEEN_ANIME, JSON.stringify(seenAnime));
             updateSeenList();
         }
+        
+        displayNextAnime();
     };
 
     // Update saved anime list in UI
@@ -440,12 +500,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         saveButton.addEventListener('click', () => {
             saveAnime();
-            displayNextAnime();
         });
 
         seenButton.addEventListener('click', () => {
             markAsSeen();
-            displayNextAnime();
         });
         
         // Panel toggle buttons
